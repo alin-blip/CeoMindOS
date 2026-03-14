@@ -151,7 +151,10 @@ CREATE TABLE IF NOT EXISTS touchpoints (
 -- quiz_results already exists.
 
 -- Next truly NEW table:
--- 4b. edu_journey (DOES NOT EXIST YET)
+-- 4b. The following tables from highticket are CRITICAL and likely missing from eduforyou.
+-- Check each one before creating. Eduforyou equivalents noted where applicable.
+
+-- edu_applications (highticket's E.D.U. journey tracker - eduforyou might not have this)
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   referrer_id UUID NOT NULL,
   referred_name TEXT,
@@ -165,35 +168,368 @@ CREATE TABLE IF NOT EXISTS touchpoints (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 5. edu_journey (student E.D.U. progress tracking)
-CREATE TABLE IF NOT EXISTS edu_journey (
+-- 5. edu_applications (THE CORE E.D.U. JOURNEY TRACKER)
+CREATE TABLE IF NOT EXISTS edu_applications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL UNIQUE,
+  user_id UUID NOT NULL,
   current_phase TEXT DEFAULT 'evaluate' CHECK (current_phase IN ('evaluate','deliver','unlock')),
   current_step INT DEFAULT 1,
-  steps_completed JSONB DEFAULT '[]'::jsonb,
-  eligibility_status TEXT,
-  course_match_result JSONB,
-  plan_generated BOOLEAN DEFAULT false,
-  test_prep_score INT,
-  documents_submitted INT DEFAULT 0,
-  cv_completed BOOLEAN DEFAULT false,
+  assigned_consultant UUID,
+  university_choice TEXT,
+  course_choice TEXT,
+  application_status TEXT,
+  documents_status TEXT,
   finance_status TEXT,
+  eligibility_status TEXT,
+  course_match_status TEXT,
+  test_prep_status TEXT,
+  cv_status TEXT,
+  university_response TEXT,
+  offer_status TEXT,
+  enrollment_confirmed BOOLEAN DEFAULT false,
+  edu_plan_status TEXT,
+  ikigai_top_domain TEXT,
+  ikigai_second_domain TEXT,
+  ikigai_recommended_courses JSONB,
+  ikigai_completed_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 6. gamification
-CREATE TABLE IF NOT EXISTS gamification (
+-- 5b. edu_application_steps (per-step tracking)
+CREATE TABLE IF NOT EXISTS edu_application_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL UNIQUE,
-  points INT DEFAULT 0,
-  level INT DEFAULT 1,
-  streak_days INT DEFAULT 0,
-  badges JSONB DEFAULT '[]'::jsonb,
-  last_activity_at TIMESTAMPTZ DEFAULT now(),
+  application_id UUID NOT NULL REFERENCES edu_applications(id),
+  step_key TEXT NOT NULL,
+  step_label TEXT,
+  phase TEXT CHECK (phase IN ('evaluate','deliver','unlock')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed','skipped')),
+  completed_at TIMESTAMPTZ,
+  notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. gamification_points (eduforyou has student_gamification - verify columns match, or create this)
+-- If student_gamification exists, skip this. Otherwise:
+CREATE TABLE IF NOT EXISTS gamification_points (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE,
+  total_points INT DEFAULT 0,
+  current_streak INT DEFAULT 0,
+  longest_streak INT DEFAULT 0,
+  lessons_completed INT DEFAULT 0,
+  courses_completed INT DEFAULT 0,
+  quizzes_completed INT DEFAULT 0,
+  perfect_quizzes INT DEFAULT 0,
+  last_activity_date DATE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6b. user_badges
+CREATE TABLE IF NOT EXISTS user_badges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  badge_key TEXT NOT NULL,
+  badge_name TEXT,
+  badge_description TEXT,
+  badge_icon TEXT,
+  badge_color TEXT,
+  points_reward INT DEFAULT 0,
+  unlocked_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, badge_key)
+);
+
+-- 6c. eligibility_results (detailed eligibility tracking)
+CREATE TABLE IF NOT EXISTS eligibility_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID,
+  email TEXT,
+  name TEXT,
+  phone TEXT,
+  years_of_financing INT,
+  qualification TEXT,
+  age INT,
+  residency_years INT,
+  immigration_status TEXT,
+  date_of_birth DATE,
+  eligible BOOLEAN,
+  eligibility_type TEXT,
+  eligible_levels JSONB,
+  reason TEXT,
+  max_years INT,
+  email_sent BOOLEAN DEFAULT false,
+  ikigai_completed BOOLEAN DEFAULT false,
+  application_started BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6d. AI Agent System tables
+CREATE TABLE IF NOT EXISTS ai_agents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  status TEXT DEFAULT 'idle' CHECK (status IN ('active','idle','error','disabled','paused')),
+  description TEXT,
+  config JSONB,
+  department TEXT,
+  system_prompt TEXT,
+  autonomy_level TEXT DEFAULT 'semi_auto',
+  last_run_at TIMESTAMPTZ,
+  next_run_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_agent_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID REFERENCES ai_agents(id),
+  action TEXT,
+  input JSONB,
+  output JSONB,
+  success BOOLEAN,
+  duration_ms INT,
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  description TEXT,
+  assigned_to UUID,
+  priority TEXT DEFAULT 'medium' CHECK (priority IN ('urgent','high','medium','low')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed','overdue','cancelled')),
+  due_date TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_by UUID,
+  agent_id UUID,
+  contact_id UUID,
+  deal_id UUID,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID,
+  type TEXT CHECK (type IN ('urgent','warning','info','opportunity')),
+  title TEXT,
+  message TEXT,
+  is_read BOOLEAN DEFAULT false,
+  is_dismissed BOOLEAN DEFAULT false,
+  action_url TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_content (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL,
+  title TEXT,
+  content TEXT,
+  meta_description TEXT,
+  tags JSONB,
+  topic TEXT,
+  tone TEXT,
+  language TEXT DEFAULT 'ro',
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft','in_review','approved','published','archived')),
+  created_by_agent UUID,
+  cmo_score INT,
+  publish_date DATE,
+  published_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ai_content_calendar (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  week INT,
+  year INT,
+  plan JSONB,
+  status TEXT DEFAULT 'draft',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6e. Commissions tracking
+CREATE TABLE IF NOT EXISTS commissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID NOT NULL,
+  deal_id UUID,
+  student_id UUID,
+  amount NUMERIC NOT NULL,
+  type TEXT CHECK (type IN ('enrollment','referral','bonus')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','paid')),
+  paid_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6f. Agent memberships
+CREATE TABLE IF NOT EXISTS agent_memberships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  plan_type TEXT DEFAULT 'standard',
+  status TEXT DEFAULT 'active',
+  started_at TIMESTAMPTZ DEFAULT now(),
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6g. Test prep tables
+CREATE TABLE IF NOT EXISTS written_questions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_slug TEXT NOT NULL,
+  question_text TEXT NOT NULL,
+  model_answer TEXT,
+  min_words INT,
+  max_words INT,
+  max_score INT,
+  order_index INT,
+  evaluation_criteria JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS test_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  course_slug TEXT NOT NULL,
+  attempt_type TEXT CHECK (attempt_type IN ('written','oral')),
+  answers JSONB,
+  feedback JSONB,
+  score INT,
+  max_score INT,
+  passed BOOLEAN,
+  time_taken INT,
+  status TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress','submitted','evaluated','failed')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  evaluated_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS personalized_tests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  course_slug TEXT NOT NULL,
+  personal_info JSONB,
+  generated_content TEXT,
+  status TEXT DEFAULT 'generating' CHECK (status IN ('generating','completed','failed')),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS edu_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  course_slug TEXT,
+  course_name TEXT,
+  eligibility_data JSONB,
+  generated_content TEXT,
+  status TEXT DEFAULT 'generating' CHECK (status IN ('generating','completed','failed')),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6h. Agent workflow system
+CREATE TABLE IF NOT EXISTS agent_workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  description TEXT,
+  department TEXT,
+  steps JSONB DEFAULT '[]'::jsonb,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS agent_workflow_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id UUID REFERENCES agent_workflows(id),
+  workflow_name TEXT,
+  current_step INT DEFAULT 0,
+  total_steps INT,
+  status TEXT DEFAULT 'queued' CHECK (status IN ('queued','running','waiting_approval','completed','failed','cancelled')),
+  input JSONB,
+  output JSONB,
+  error TEXT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS agent_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_run_id UUID REFERENCES agent_workflow_runs(id),
+  agent_type TEXT,
+  type TEXT CHECK (type IN ('content_review','publish','email_send','ad_launch','calendar_approve')),
+  title TEXT,
+  description TEXT,
+  preview_data JSONB,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  reviewer_notes TEXT,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6i. Finance estimates
+CREATE TABLE IF NOT EXISTS finance_estimates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contact_id UUID,
+  user_id UUID,
+  email TEXT,
+  course_id TEXT,
+  tuition_fee NUMERIC,
+  maintenance_loan NUMERIC,
+  total_estimate NUMERIC,
+  living_location TEXT,
+  household_income NUMERIC,
+  inputs JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6j. CEO agent messages (for AI chat history)
+CREATE TABLE IF NOT EXISTS ceo_agent_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  role TEXT CHECK (role IN ('user','assistant')),
+  content TEXT,
+  source TEXT DEFAULT 'dashboard',
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6k. Job positions and applications
+CREATE TABLE IF NOT EXISTS job_positions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  type TEXT DEFAULT 'remote',
+  status TEXT DEFAULT 'active',
+  requirements TEXT,
+  questions JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS job_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position_id UUID REFERENCES job_positions(id),
+  full_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT,
+  linkedin_url TEXT,
+  years_experience INT,
+  cv_file_url TEXT,
+  answers JSONB,
+  score INT,
+  status TEXT DEFAULT 'new',
+  ai_analysis_summary TEXT,
+  ai_analysis_match_percent INT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- 7. newsletter_subscribers
@@ -287,20 +623,26 @@ CREATE TABLE IF NOT EXISTS career_applications (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Enable RLS on all new tables
-ALTER TABLE deals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE touchpoints ENABLE ROW LEVEL SECURITY;
-ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE edu_journey ENABLE ROW LEVEL SECURITY;
-ALTER TABLE gamification ENABLE ROW LEVEL SECURITY;
-ALTER TABLE newsletter_subscribers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE email_sequences ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sms_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE test_prep_attempts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE careers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE career_applications ENABLE ROW LEVEL SECURITY;
+-- Enable RLS on ALL new tables (run for each table created above)
+-- Pattern: admin full access + users own data where applicable
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOR tbl IN SELECT unnest(ARRAY[
+    'deals','touchpoints','edu_applications','edu_application_steps',
+    'gamification_points','user_badges','eligibility_results',
+    'ai_agents','ai_agent_logs','ai_tasks','ai_alerts',
+    'ai_content','ai_content_calendar','commissions','agent_memberships',
+    'written_questions','test_attempts','personalized_tests','edu_plans',
+    'agent_workflows','agent_workflow_runs','agent_approvals',
+    'finance_estimates','ceo_agent_messages','job_positions','job_applications',
+    'newsletter_subscribers','email_sequences','contracts'
+  ])
+  LOOP
+    EXECUTE format('ALTER TABLE IF EXISTS %I ENABLE ROW LEVEL SECURITY', tbl);
+  END LOOP;
+END $$;
 
 -- RLS Policies (basic - admin can do all, users can see own data)
 -- Repeat this pattern for each table:
