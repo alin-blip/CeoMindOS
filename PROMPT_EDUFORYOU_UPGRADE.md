@@ -54,8 +54,23 @@ I need you to **port all missing features from highticket into this eduforyou Lo
 /legal/* → Legal pages
 ```
 
-### Existing Supabase Tables
-abandoned_carts, applications, appointments, blog_posts, campuses, ceo_okrs, ceo_tasks, contacts, email_send_log, email_send_state, email_sends, email_templates, email_unsubscribe_tokens, ikigai_results, messages, offers, orders, user_roles
+### Existing Supabase Tables (27 total - DO NOT recreate these)
+profiles, user_roles, contacts, applications, quiz_results, blog_posts, campuses, appointments, sms_logs, abandoned_carts, referrals, student_documents, student_gamification, student_cv, ceo_tasks, ceo_okrs, messages, skill_entries, ikigai_results, offers, social_profiles, outreach_templates, orders, email_templates, email_sends, email_send_log, email_send_state, suppressed_emails, email_unsubscribe_tokens
+
+**NOTE**: eduforyou already has `referrals`, `student_gamification`, `student_cv`, `student_documents`, `skill_entries`, `social_profiles`, `outreach_templates`, `suppressed_emails`, `profiles`, and `quiz_results` tables. Check existing tables before creating new ones.
+
+### Existing DB Functions
+- `handle_new_user()` - auto-creates profile on signup
+- `assign_default_student_role()` - auto-assigns 'student' role
+- `has_role(user_id, role)` - role check helper
+- `get_agent_leaderboard()` - top 10 agents by referrals
+- Email queue functions: `enqueue_email()`, `read_email_batch()`, `delete_email()`, `move_to_dlq()`
+
+### Existing Email System (ALREADY SOPHISTICATED - DO NOT REBUILD)
+Uses pgmq with 4 queues (auth_emails, transactional_emails + DLQs). pg_cron job runs every 5s to invoke process-email-queue. Has rate limiting, TTL, dedup, suppression list. Uses Lovable email API.
+
+### Existing Storage
+- `documents` bucket (private) with RLS per user folder
 
 ### Existing Supabase Edge Functions
 auth-email-hook, ceo-ai-engine, check-subscription, create-checkout, customer-portal, ikigai-builder, offer-builder, outreach-generator, process-email-queue, profile-builder, send-appointment-reminders, send-sms, send-transactional-email, skill-scanner, stripe-webhook
@@ -74,12 +89,14 @@ Work through these phases in order. Each phase should be a separate commit.
 
 ### PHASE 1: Database Schema (Supabase Migrations)
 
+IMPORTANT: Many tables already exist (see list above). Only create tables that are truly missing. Check first with `\dt` or by reading the types.ts file.
+
 Create new Supabase migration files for these MISSING tables:
 
 ```sql
 -- supabase/migrations/TIMESTAMP_phase1_missing_tables.sql
 
--- 1. deals (pipeline management)
+-- 1. deals (pipeline management) - NEW
 CREATE TABLE IF NOT EXISTS deals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contact_id UUID REFERENCES contacts(id),
@@ -107,8 +124,10 @@ CREATE TABLE IF NOT EXISTS touchpoints (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. documents (student document uploads)
-CREATE TABLE IF NOT EXISTS documents (
+-- 3. documents - SKIP, already exists as student_documents
+-- Just verify student_documents has all needed columns
+
+-- 3b. touchpoints is NEW, documents table already exists. Next new table:
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL,
   application_id UUID REFERENCES applications(id),
@@ -125,8 +144,14 @@ CREATE TABLE IF NOT EXISTS documents (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 4. referrals
-CREATE TABLE IF NOT EXISTS referrals (
+-- 4. referrals - SKIP, already exists. Verify columns match.
+-- student_gamification also already exists - maps to gamification needs.
+-- student_cv already exists - maps to CV builder needs.
+-- skill_entries already exists.
+-- quiz_results already exists.
+
+-- Next truly NEW table:
+-- 4b. edu_journey (DOES NOT EXIST YET)
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   referrer_id UUID NOT NULL,
   referred_name TEXT,
